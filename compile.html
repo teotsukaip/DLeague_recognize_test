@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mind-AR ターゲットコンパイル</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111318;
+        --panel: #1c1f27;
+        --text: #f4f4f5;
+        --muted: #a1a1aa;
+        --accent: #ff6a00;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding: 24px;
+        line-height: 1.6;
+      }
+      h1 { font-size: 1.3rem; margin: 0 0 8px; }
+      p { color: var(--muted); margin: 0 0 16px; }
+      .panel {
+        background: var(--panel);
+        border-radius: 16px;
+        padding: 20px;
+        max-width: 720px;
+      }
+      ol { padding-left: 1.2rem; color: var(--muted); }
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 20px;
+        font-weight: 700;
+        cursor: pointer;
+        background: var(--accent);
+        color: #fff;
+        margin-right: 8px;
+        margin-top: 12px;
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      #progress { margin-top: 16px; font-variant-numeric: tabular-nums; }
+      #preview { margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; }
+      #preview img { width: 160px; height: auto; border-radius: 8px; background: #000; }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h1>ターゲット画像のコンパイル</h1>
+      <p>認識用の <code>targets.mind</code> を作り直すときの補助ページです。通常のAR利用では <a href="./index.html">index.html</a> を開いてください。</p>
+      <ol>
+        <li>0番: ロゴ（D_Logo.jpg）</li>
+        <li>1番: 選手（D_player.png）</li>
+      </ol>
+      <button id="compileButton">コンパイルしてダウンロード</button>
+      <div id="progress">ライブラリ読み込み中...</div>
+      <div id="preview">
+        <img src="./D_Logo.jpg" alt="ロゴ" />
+        <img src="./D_player.png" alt="選手" />
+      </div>
+    </div>
+    <script type="module">
+      import { Compiler } from "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js";
+
+      const progressEl = document.getElementById("progress");
+      const button = document.getElementById("compileButton");
+
+      const loadImage = (src) =>
+        new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("画像の読み込みに失敗: " + src));
+          img.src = src;
+        });
+
+      const downloadBuffer = (buffer, filename) => {
+        const blob = new Blob([buffer]);
+        const a = document.createElement("a");
+        a.download = filename;
+        a.href = URL.createObjectURL(blob);
+        a.click();
+        URL.revokeObjectURL(a.href);
+      };
+
+      const compile = async () => {
+        button.disabled = true;
+        progressEl.textContent = "画像を読み込み中...";
+        try {
+          const images = await Promise.all([
+            loadImage("./D_Logo.jpg"),
+            loadImage("./D_player.png"),
+          ]);
+          const compiler = new Compiler();
+          await compiler.compileImageTargets(images, (progress) => {
+            const message = "コンパイル中: " + progress.toFixed(1) + "%";
+            progressEl.textContent = message;
+            console.log(message);
+          });
+          const buffer = await compiler.exportData();
+          window.__MIND_BUFFER = buffer;
+          window.__MIND_READY = true;
+          progressEl.textContent = "完了。targets.mind をダウンロードします。";
+          downloadBuffer(buffer, "targets.mind");
+        } catch (error) {
+          console.error(error);
+          progressEl.textContent = "エラー: " + error.message;
+          button.disabled = false;
+        }
+      };
+
+      progressEl.textContent = "準備完了";
+      button.addEventListener("click", compile);
+      if (new URLSearchParams(location.search).get("auto") === "1") {
+        compile();
+      }
+    </script>
+  </body>
+</html>

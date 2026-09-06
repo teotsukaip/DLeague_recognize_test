@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Dリーグ 画像認識 AR</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700;900&display=swap" rel="stylesheet" />
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <style>
+      :root {
+        --bg: #0f1116;
+        --panel: rgba(18, 20, 26, 0.88);
+        --text: #fff7f0;
+        --muted: #d6c7bb;
+        --accent: #ff6a00;
+        --ok: #22c55e;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+        color: var(--text);
+      }
+      #start-screen,
+      #status-bar,
+      #hint {
+        position: fixed;
+        z-index: 20;
+        left: 0;
+        right: 0;
+      }
+      #start-screen {
+        inset: 0;
+        background:
+          radial-gradient(circle at top, rgba(255, 106, 0, 0.22), transparent 42%),
+          var(--bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      #start-screen.hidden { display: none; }
+      .card {
+        width: min(520px, 100%);
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        padding: 24px 20px 20px;
+        backdrop-filter: blur(16px);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.45rem;
+        letter-spacing: 0.04em;
+      }
+      .lead {
+        margin: 0 0 18px;
+        color: var(--muted);
+        line-height: 1.7;
+        font-size: 0.95rem;
+      }
+      .targets {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+      .target {
+        background: #000;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .target img {
+        display: block;
+        width: 100%;
+        height: 140px;
+        object-fit: contain;
+        background: #1a1c22;
+      }
+      .target p {
+        margin: 0;
+        padding: 8px 10px 10px;
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+      #start-button {
+        appearance: none;
+        width: 100%;
+        border: 0;
+        border-radius: 999px;
+        padding: 14px 18px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 1.05rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        cursor: pointer;
+      }
+      #start-button:disabled { opacity: 0.55; cursor: wait; }
+      .note {
+        margin: 12px 0 0;
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      #status-bar {
+        top: 0;
+        display: none;
+        padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+        background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72), transparent);
+        font-weight: 700;
+        text-align: center;
+        pointer-events: none;
+      }
+      #status-bar.visible { display: block; }
+      #status-bar.found { color: #bbf7d0; }
+      #hint {
+        bottom: 20px;
+        display: none;
+        text-align: center;
+        pointer-events: none;
+      }
+      #hint.visible { display: block; }
+      #hint span {
+        display: inline-block;
+        background: rgba(0, 0, 0, 0.62);
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 0.82rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="start-screen">
+      <div class="card">
+        <h1>Dリーグ 画像認識 AR</h1>
+        <p class="lead">カメラを起動し、ロゴまたは選手の写真に向けると、その位置に認識結果を表示します。</p>
+        <div class="targets">
+          <div class="target">
+            <img src="./D_Logo.jpg" alt="認識対象のロゴ" />
+            <p>ロゴを認識</p>
+          </div>
+          <div class="target">
+            <img src="./D_player.png" alt="認識対象の選手" />
+            <p>選手を認識</p>
+          </div>
+        </div>
+        <button id="start-button" type="button">カメラを起動</button>
+        <p class="note">スマートフォンのブラウザで開いてください。初回はカメラ利用の許可が必要です。GitHub Pages の HTTPS 上で動作します。</p>
+      </div>
+    </div>
+
+    <div id="status-bar">カメラを起動しています...</div>
+    <div id="hint"><span>ロゴまたは選手の写真にカメラを向けてください</span></div>
+
+    <a-scene
+      mindar-image="imageTargetSrc: ./targets.mind; maxTrack: 2; filterMinCF: 0.001; filterBeta: 1000; missTolerance: 5; warmupTolerance: 5; autoStart: false; uiLoading: no; uiScanning: no; uiError: yes"
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false"
+    >
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-entity id="logo-target" mindar-image-target="targetIndex: 0">
+        <a-entity jp-label="text: ロゴを認識; color: #FF6A00" position="0 0 0.05"></a-entity>
+      </a-entity>
+
+      <a-entity id="player-target" mindar-image-target="targetIndex: 1">
+        <a-entity jp-label="text: 選手を認識; color: #FF6A00" position="0 0 0.05"></a-entity>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      AFRAME.registerComponent("jp-label", {
+        schema: {
+          text: { type: "string" },
+          color: { type: "string", default: "#FF6A00" },
+        },
+        init: function () {
+          const draw = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 1024;
+            canvas.height = 256;
+            const ctx = canvas.getContext("2d");
+
+            const radius = 36;
+            ctx.fillStyle = "rgba(8, 8, 10, 0.82)";
+            ctx.beginPath();
+            ctx.moveTo(radius, 28);
+            ctx.arcTo(1000, 28, 1000, 228, radius);
+            ctx.arcTo(1000, 228, 24, 228, radius);
+            ctx.arcTo(24, 228, 24, 28, radius);
+            ctx.arcTo(24, 28, 1000, 28, radius);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = this.data.color;
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            ctx.fillStyle = "#fff";
+            ctx.font = '900 92px "Noto Sans JP", sans-serif';
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(this.data.text, 512, 132);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            if ("SRGBColorSpace" in THREE) {
+              texture.colorSpace = THREE.SRGBColorSpace;
+            }
+            const mesh = new THREE.Mesh(
+              new THREE.PlaneGeometry(1, 0.26),
+              new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                depthTest: false,
+                side: THREE.DoubleSide,
+              })
+            );
+            this.el.setObject3D("mesh", mesh);
+          };
+
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(draw);
+          } else {
+            draw();
+          }
+        },
+      });
+
+      const startScreen = document.getElementById("start-screen");
+      const startButton = document.getElementById("start-button");
+      const statusBar = document.getElementById("status-bar");
+      const hint = document.getElementById("hint");
+      const sceneEl = document.querySelector("a-scene");
+      const found = new Set();
+
+      const updateStatus = () => {
+        if (found.size === 0) {
+          statusBar.textContent = "未認識";
+          statusBar.classList.remove("found");
+          return;
+        }
+        const labels = [];
+        if (found.has("logo")) labels.push("ロゴを認識");
+        if (found.has("player")) labels.push("選手を認識");
+        statusBar.textContent = labels.join(" / ");
+        statusBar.classList.add("found");
+      };
+
+      const bindTarget = (selector, key) => {
+        const target = document.querySelector(selector);
+        target.addEventListener("targetFound", () => {
+          found.add(key);
+          updateStatus();
+        });
+        target.addEventListener("targetLost", () => {
+          found.delete(key);
+          updateStatus();
+        });
+      };
+
+      bindTarget("#logo-target", "logo");
+      bindTarget("#player-target", "player");
+
+      const startAR = async () => {
+        startButton.disabled = true;
+        startButton.textContent = "起動中...";
+        try {
+          const mindar = sceneEl.components["mindar-image"];
+          if (!mindar) {
+            throw new Error("Mind-AR の読み込みに失敗しました");
+          }
+          await mindar.start();
+          startScreen.classList.add("hidden");
+          statusBar.classList.add("visible");
+          hint.classList.add("visible");
+          updateStatus();
+        } catch (error) {
+          console.error(error);
+          startButton.disabled = false;
+          startButton.textContent = "カメラを起動";
+          alert("カメラを起動できませんでした。HTTPS（GitHub Pages）で開き、カメラ許可を確認してください。");
+        }
+      };
+
+      startButton.addEventListener("click", startAR);
+    </script>
+  </body>
+</html>
