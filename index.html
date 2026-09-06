@@ -112,6 +112,28 @@
         color: var(--muted);
         line-height: 1.6;
       }
+      #error-box {
+        display: none;
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(127, 29, 29, 0.72);
+        color: #fecaca;
+        font-size: 0.82rem;
+        line-height: 1.6;
+      }
+      #error-box.visible { display: block; }
+      #ar-root {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #ar-root a-scene {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
       #status-bar {
         top: 0;
         display: none;
@@ -154,31 +176,35 @@
             <p>選手を認識</p>
           </div>
         </div>
-        <button id="start-button" type="button">カメラを起動</button>
-        <p class="note">スマートフォンのブラウザで開いてください。初回はカメラ利用の許可が必要です。GitHub Pages の HTTPS 上で動作します。</p>
+        <button id="start-button" type="button" disabled>読み込み中...</button>
+        <div id="error-box"></div>
+        <p class="note">Safari または Chrome で開いてください。LINE などのアプリ内ブラウザではカメラが使えないことがあります。初回はカメラ利用を「許可」してください。</p>
       </div>
     </div>
 
     <div id="status-bar">カメラを起動しています...</div>
     <div id="hint"><span>ロゴまたは選手の写真にカメラを向けてください</span></div>
 
-    <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind; maxTrack: 2; filterMinCF: 0.001; filterBeta: 1000; missTolerance: 5; warmupTolerance: 5; autoStart: false; uiLoading: no; uiScanning: no; uiError: yes"
-      color-space="sRGB"
-      renderer="colorManagement: true, physicallyCorrectLights"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: false"
-    >
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <div id="ar-root">
+      <a-scene
+        mindar-image="imageTargetSrc: ./targets.mind; maxTrack: 2; filterMinCF: 0.001; filterBeta: 1000; missTolerance: 5; warmupTolerance: 5; autoStart: false; uiLoading: no; uiScanning: no; uiError: no"
+        color-space="sRGB"
+        renderer="colorManagement: true, physicallyCorrectLights"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+        embedded
+      >
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <a-entity id="logo-target" mindar-image-target="targetIndex: 0">
-        <a-entity jp-label="text: ロゴを認識; color: #FF6A00" position="0 0 0.05"></a-entity>
-      </a-entity>
+        <a-entity id="logo-target" mindar-image-target="targetIndex: 0">
+          <a-entity jp-label="text: ロゴを認識; color: #FF6A00" position="0 0 0.05"></a-entity>
+        </a-entity>
 
-      <a-entity id="player-target" mindar-image-target="targetIndex: 1">
-        <a-entity jp-label="text: 選手を認識; color: #FF6A00" position="0 0 0.05"></a-entity>
-      </a-entity>
-    </a-scene>
+        <a-entity id="player-target" mindar-image-target="targetIndex: 1">
+          <a-entity jp-label="text: 選手を認識; color: #FF6A00" position="0 0 0.05"></a-entity>
+        </a-entity>
+      </a-scene>
+    </div>
 
     <script>
       AFRAME.registerComponent("jp-label", {
@@ -240,10 +266,34 @@
 
       const startScreen = document.getElementById("start-screen");
       const startButton = document.getElementById("start-button");
+      const errorBox = document.getElementById("error-box");
       const statusBar = document.getElementById("status-bar");
       const hint = document.getElementById("hint");
       const sceneEl = document.querySelector("a-scene");
       const found = new Set();
+      let arSystem = null;
+
+      const showError = (message) => {
+        errorBox.textContent = message;
+        errorBox.classList.add("visible");
+      };
+
+      const hideError = () => {
+        errorBox.classList.remove("visible");
+        errorBox.textContent = "";
+      };
+
+      const showAR = () => {
+        startScreen.classList.add("hidden");
+        statusBar.classList.add("visible");
+        hint.classList.add("visible");
+        updateStatus();
+      };
+
+      const resetStartButton = () => {
+        startButton.disabled = false;
+        startButton.textContent = "カメラを起動";
+      };
 
       const updateStatus = () => {
         if (found.size === 0) {
@@ -273,28 +323,36 @@
       bindTarget("#logo-target", "logo");
       bindTarget("#player-target", "player");
 
-      const startAR = async () => {
-        startButton.disabled = true;
-        startButton.textContent = "起動中...";
-        try {
-          const mindar = sceneEl.components["mindar-image"];
-          if (!mindar) {
-            throw new Error("Mind-AR の読み込みに失敗しました");
-          }
-          await mindar.start();
-          startScreen.classList.add("hidden");
-          statusBar.classList.add("visible");
-          hint.classList.add("visible");
-          updateStatus();
-        } catch (error) {
-          console.error(error);
-          startButton.disabled = false;
-          startButton.textContent = "カメラを起動";
-          alert("カメラを起動できませんでした。HTTPS（GitHub Pages）で開き、カメラ許可を確認してください。");
+      const readySystem = () => {
+        arSystem = sceneEl.systems["mindar-image-system"];
+        if (arSystem) {
+          resetStartButton();
         }
       };
 
-      startButton.addEventListener("click", startAR);
+      if (sceneEl.hasLoaded) {
+        readySystem();
+      } else {
+        sceneEl.addEventListener("loaded", readySystem, { once: true });
+      }
+
+      sceneEl.addEventListener("arReady", showAR);
+      sceneEl.addEventListener("arError", () => {
+        resetStartButton();
+        showError("カメラを起動できませんでした。Safari か Chrome で開き直し、このサイトのカメラを「許可」してください。設定 → Safari → カメラ からも確認できます。");
+      });
+
+      startButton.addEventListener("click", () => {
+        hideError();
+        if (!arSystem) {
+          showError("読み込みが完了していません。数秒待ってからもう一度押してください。");
+          return;
+        }
+        startButton.disabled = true;
+        startButton.textContent = "起動中...";
+        // iOS はユーザー操作の直後にカメラを開く必要があるため、ここでは await しない
+        arSystem.start();
+      });
     </script>
   </body>
 </html>
